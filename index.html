@@ -301,14 +301,89 @@ function createInitialState() {
 }
 
 /* ----------------------------------------------------------------
-   mcts.js — Monte Carlo Tree Search Engine  (Phase 3)
+   mcts.js — Monte Carlo Tree Search Engine
    ---------------------------------------------------------------- */
-// TODO: implement in Phase 3
+const MCTS_C = Math.SQRT2;
+
+function makeNode(state, parent, move) {
+  return { state, parent, move, children: [], visits: 0, wins: 0,
+           untriedMoves: getLegalMoves(state) };
+}
+
+function ucbSelect(node) {
+  const logN = Math.log(node.visits);
+  let best = null, bestScore = -Infinity;
+  for (const child of node.children) {
+    const score = child.visits === 0
+      ? Infinity
+      : (child.wins / child.visits) + MCTS_C * Math.sqrt(logN / child.visits);
+    if (score > bestScore) { bestScore = score; best = child; }
+  }
+  return best;
+}
+
+function rollout(state) {
+  let s = state;
+  while (!isTerminal(s)) {
+    const moves = getLegalMoves(s);
+    const m = moves[Math.floor(Math.random() * moves.length)];
+    s = applyMove(s, m.board, m.cell);
+  }
+  return getWinner(s);
+}
+
+function backprop(node, winner) {
+  let n = node;
+  while (n !== null) {
+    n.visits++;
+    // mover = player who moved TO reach this node (opponent of currentPlayer)
+    const mover = n.state.currentPlayer === 'X' ? 'O' : 'X';
+    if (winner === mover) n.wins++;
+    n = n.parent;
+  }
+}
+
+function mctsSearch(rootState, iterations) {
+  const root = makeNode(rootState, null, null);
+
+  for (let i = 0; i < iterations; i++) {
+    // 1. Select
+    let node = root;
+    while (!isTerminal(node.state) && node.untriedMoves.length === 0) {
+      node = ucbSelect(node);
+    }
+    // 2. Expand
+    if (!isTerminal(node.state) && node.untriedMoves.length > 0) {
+      const idx = Math.floor(Math.random() * node.untriedMoves.length);
+      const move = node.untriedMoves.splice(idx, 1)[0];
+      const child = makeNode(applyMove(node.state, move.board, move.cell), node, move);
+      node.children.push(child);
+      node = child;
+    }
+    // 3. Rollout
+    const result = rollout(node.state);
+    // 4. Backpropagate
+    backprop(node, result);
+  }
+
+  // Best = most-visited child of root
+  let best = null;
+  for (const child of root.children) {
+    if (!best || child.visits > best.visits) best = child;
+  }
+  return best ? best.move : getLegalMoves(rootState)[0];
+}
 
 /* ----------------------------------------------------------------
-   Worker message handler  (Phase 3)
+   Worker message handler
    ---------------------------------------------------------------- */
-// TODO: implement in Phase 3
+self.onmessage = function(e) {
+  if (e.data.type === 'search') {
+    const { state, iterations, id } = e.data;
+    const move = mctsSearch(state, iterations);
+    self.postMessage({ type: 'result', move, id });
+  }
+};
 </script>
 
 <!-- ═══════════════════════════════════════════════════════════════
@@ -529,21 +604,60 @@ function updateStatus(state, winner) {
    ---------------------------------------------------------------- */
 
 let gameState = null;
+let aiThinking = false;
 
-function init() {
-  gameState = createInitialState();
-  buildBoard();
+function getAIPlayer() {
+  const mode = document.getElementById('mode-select').value;
+  if (mode === 'hva-x') return 'O'; // human is X, AI is O
+  if (mode === 'hva-o') return 'X'; // human is O, AI is X
+  return null;
+}
+
+async function maybeRequestAI() {
+  const aiPlayer = getAIPlayer();
+  if (!aiPlayer || !gameState || getWinner(gameState)) return;
+  if (gameState.currentPlayer !== aiPlayer) return;
+  if (aiThinking) return;
+
+  const stateAtSearch = gameState;
+  aiThinking = true;
+  const statusEl = document.getElementById('status');
+  statusEl.textContent = 'AI thinking\u2026';
+  statusEl.className = 'thinking';
+
+  const iterations = parseInt(document.getElementById('difficulty').value, 10);
+  const move = await requestAIMove(stateAtSearch, iterations);
+
+  // Discard stale result if game was reset while thinking
+  if (gameState !== stateAtSearch) { aiThinking = false; return; }
+
+  aiThinking = false;
+  gameState = applyMove(gameState, move.board, move.cell);
   render(gameState);
 }
 
+function init() {
+  cancelAISearch();
+  aiThinking = false;
+  gameState = createInitialState();
+  buildBoard();
+  render(gameState);
+  maybeRequestAI();
+}
+
 function onCellClick(boardIndex, cellIndex) {
-  if (!gameState || getWinner(gameState)) return;
+  if (!gameState || getWinner(gameState) || aiThinking) return;
+
+  // Block clicks when it's the AI's turn
+  const aiPlayer = getAIPlayer();
+  if (aiPlayer && gameState.currentPlayer === aiPlayer) return;
 
   const legal = getLegalMoves(gameState);
   if (!legal.some(m => m.board === boardIndex && m.cell === cellIndex)) return;
 
   gameState = applyMove(gameState, boardIndex, cellIndex);
   render(gameState);
+  maybeRequestAI();
 }
 
 /* ----------------------------------------------------------------
@@ -564,12 +678,45 @@ function syncDifficultyVisibility() {
   document.getElementById('difficulty-group').style.opacity = isHvH ? '0.35' : '1';
   document.getElementById('difficulty-group').style.pointerEvents = isHvH ? 'none' : '';
 }
-modeSelect.addEventListener('change', syncDifficultyVisibility);
+modeSelect.addEventListener('change', () => {
+  syncDifficultyVisibility();
+  if (!aiThinking) maybeRequestAI();
+});
 
 /* ----------------------------------------------------------------
-   worker-bridge.js stub  (Phase 3)
+   worker-bridge.js
    ---------------------------------------------------------------- */
-// TODO: implement in Phase 3
+let _worker = null;
+let _pendingResolve = null;
+let _currentSearchId = 0;
+
+function getWorker() {
+  if (_worker) return _worker;
+  const src = document.getElementById('worker-src').textContent;
+  const blob = new Blob([src], { type: 'application/javascript' });
+  _worker = new Worker(URL.createObjectURL(blob));
+  _worker.onmessage = (e) => {
+    if (e.data.type === 'result' && _pendingResolve && e.data.id === _currentSearchId) {
+      const resolve = _pendingResolve;
+      _pendingResolve = null;
+      resolve(e.data.move);
+    }
+  };
+  return _worker;
+}
+
+function requestAIMove(state, iterations) {
+  const id = ++_currentSearchId;
+  return new Promise((resolve) => {
+    _pendingResolve = resolve;
+    getWorker().postMessage({ type: 'search', state, iterations, id });
+  });
+}
+
+function cancelAISearch() {
+  _pendingResolve = null;
+  _currentSearchId++;
+}
 
 /* ----------------------------------------------------------------
    Phase 1 console test harness
