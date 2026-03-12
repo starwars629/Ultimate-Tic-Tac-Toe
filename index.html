@@ -1,0 +1,474 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Ultimate Tic-Tac-Toe</title>
+  <style>
+    /* Phase 2+ will fill this in */
+    body { font-family: sans-serif; background: #1a1a2e; color: #eee; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; }
+    #app { text-align: center; }
+    h1 { margin-bottom: 0.5rem; }
+    p { color: #aaa; }
+  </style>
+</head>
+<body>
+
+<!-- ═══════════════════════════════════════════════════════════════
+     WORKER SOURCE  (loaded by worker-bridge as a Blob URL)
+     Contains: game.js + mcts.js
+     ═══════════════════════════════════════════════════════════════ -->
+<script id="worker-src" type="text/plain">
+/* ----------------------------------------------------------------
+   game.js — Pure game logic (state, legal moves, win detection)
+   Shared by main thread and Web Worker.
+   ---------------------------------------------------------------- */
+
+const WIN_PATTERNS = [
+  [0,1,2],[3,4,5],[6,7,8], // rows
+  [0,3,6],[1,4,7],[2,5,8], // cols
+  [0,4,8],[2,4,6]          // diagonals
+];
+
+/**
+ * Returns true if `player` has three in a row in `cells` (length-9 array).
+ * @param {Array} cells
+ * @param {string} player 'X' or 'O'
+ * @returns {boolean}
+ */
+function checkLocalWin(cells, player) {
+  return WIN_PATTERNS.some(([a, b, c]) =>
+    cells[a] === player && cells[b] === player && cells[c] === player
+  );
+}
+
+/**
+ * Returns true if `player` has won the macro board.
+ * @param {Array} macroStatus  length-9 array of 'X' | 'O' | 'draw' | null
+ * @param {string} player
+ * @returns {boolean}
+ */
+function checkMacroWin(macroStatus, player) {
+  return WIN_PATTERNS.some(([a, b, c]) =>
+    macroStatus[a] === player && macroStatus[b] === player && macroStatus[c] === player
+  );
+}
+
+/**
+ * Returns all legal {board, cell} moves for the given state.
+ * @param {object} state
+ * @returns {Array<{board: number, cell: number}>}
+ */
+function getLegalMoves(state) {
+  const { boards, macroStatus, activeBoard } = state;
+  const moves = [];
+
+  const tryBoard = (b) => {
+    if (macroStatus[b] !== null) return; // board already decided
+    for (let c = 0; c < 9; c++) {
+      if (boards[b][c] === null) {
+        moves.push({ board: b, cell: c });
+      }
+    }
+  };
+
+  if (activeBoard !== null) {
+    // Constrained — must play in activeBoard (or free if it's closed)
+    if (macroStatus[activeBoard] === null) {
+      tryBoard(activeBoard);
+    }
+    // If the constrained board is closed, fall through to free choice
+    if (moves.length === 0) {
+      for (let b = 0; b < 9; b++) tryBoard(b);
+    }
+  } else {
+    // Free choice — any open board
+    for (let b = 0; b < 9; b++) tryBoard(b);
+  }
+
+  return moves;
+}
+
+/**
+ * Applies a move and returns a new game state (copy-on-write; no mutation).
+ * @param {object} state
+ * @param {number} boardIndex
+ * @param {number} cellIndex
+ * @returns {object} new state
+ */
+function applyMove(state, boardIndex, cellIndex) {
+  const { boards, macroStatus, currentPlayer } = state;
+
+  // Deep-copy the boards array
+  const newBoards = boards.map((b, i) =>
+    i === boardIndex ? b.slice() : b
+  );
+  newBoards[boardIndex][cellIndex] = currentPlayer;
+
+  // Update macro status for affected board
+  const newMacroStatus = macroStatus.slice();
+  if (newMacroStatus[boardIndex] === null) {
+    const localCells = newBoards[boardIndex];
+    if (checkLocalWin(localCells, currentPlayer)) {
+      newMacroStatus[boardIndex] = currentPlayer;
+    } else if (localCells.every(c => c !== null)) {
+      newMacroStatus[boardIndex] = 'draw';
+    }
+  }
+
+  // Next player
+  const nextPlayer = currentPlayer === 'X' ? 'O' : 'X';
+
+  // Determine next activeBoard:
+  // The cell index chosen becomes the index of the next required macro-board.
+  // If that macro-board is already decided, next player gets free choice (null).
+  const nextActive = newMacroStatus[cellIndex] === null ? cellIndex : null;
+
+  return {
+    boards: newBoards,
+    macroStatus: newMacroStatus,
+    currentPlayer: nextPlayer,
+    activeBoard: nextActive
+  };
+}
+
+/**
+ * Returns the game winner or status.
+ * @param {object} state
+ * @returns {'X' | 'O' | 'draw' | null}  null means game still in progress
+ */
+function getWinner(state) {
+  const { macroStatus } = state;
+
+  if (checkMacroWin(macroStatus, 'X')) return 'X';
+  if (checkMacroWin(macroStatus, 'O')) return 'O';
+
+  // Draw: all macro-boards decided (won or drawn) and no winner
+  if (macroStatus.every(s => s !== null)) return 'draw';
+
+  // Check if any moves remain
+  const moves = getLegalMoves(state);
+  if (moves.length === 0) return 'draw';
+
+  return null;
+}
+
+/**
+ * Returns true if the game is over.
+ * @param {object} state
+ * @returns {boolean}
+ */
+function isTerminal(state) {
+  return getWinner(state) !== null;
+}
+
+/**
+ * Returns a fresh initial game state.
+ * @returns {object}
+ */
+function createInitialState() {
+  return {
+    boards: Array.from({ length: 9 }, () => Array(9).fill(null)),
+    macroStatus: Array(9).fill(null),
+    currentPlayer: 'X',
+    activeBoard: null
+  };
+}
+
+/* ----------------------------------------------------------------
+   mcts.js — Monte Carlo Tree Search Engine  (Phase 3)
+   ---------------------------------------------------------------- */
+
+// TODO: implement in Phase 3
+
+/* ----------------------------------------------------------------
+   Worker message handler  (Phase 3)
+   ---------------------------------------------------------------- */
+
+// TODO: implement in Phase 3
+
+</script>
+
+<!-- ═══════════════════════════════════════════════════════════════
+     MAIN THREAD SCRIPTS
+     ═══════════════════════════════════════════════════════════════ -->
+<script>
+/* ----------------------------------------------------------------
+   Inline game.js on the main thread so render/controller can use it
+   without a worker round-trip for UI logic.
+   ---------------------------------------------------------------- */
+
+const WIN_PATTERNS = [
+  [0,1,2],[3,4,5],[6,7,8],
+  [0,3,6],[1,4,7],[2,5,8],
+  [0,4,8],[2,4,6]
+];
+
+function checkLocalWin(cells, player) {
+  return WIN_PATTERNS.some(([a, b, c]) =>
+    cells[a] === player && cells[b] === player && cells[c] === player
+  );
+}
+
+function checkMacroWin(macroStatus, player) {
+  return WIN_PATTERNS.some(([a, b, c]) =>
+    macroStatus[a] === player && macroStatus[b] === player && macroStatus[c] === player
+  );
+}
+
+function getLegalMoves(state) {
+  const { boards, macroStatus, activeBoard } = state;
+  const moves = [];
+
+  const tryBoard = (b) => {
+    if (macroStatus[b] !== null) return;
+    for (let c = 0; c < 9; c++) {
+      if (boards[b][c] === null) moves.push({ board: b, cell: c });
+    }
+  };
+
+  if (activeBoard !== null) {
+    if (macroStatus[activeBoard] === null) {
+      tryBoard(activeBoard);
+    }
+    if (moves.length === 0) {
+      for (let b = 0; b < 9; b++) tryBoard(b);
+    }
+  } else {
+    for (let b = 0; b < 9; b++) tryBoard(b);
+  }
+
+  return moves;
+}
+
+function applyMove(state, boardIndex, cellIndex) {
+  const { boards, macroStatus, currentPlayer } = state;
+
+  const newBoards = boards.map((b, i) =>
+    i === boardIndex ? b.slice() : b
+  );
+  newBoards[boardIndex][cellIndex] = currentPlayer;
+
+  const newMacroStatus = macroStatus.slice();
+  if (newMacroStatus[boardIndex] === null) {
+    const localCells = newBoards[boardIndex];
+    if (checkLocalWin(localCells, currentPlayer)) {
+      newMacroStatus[boardIndex] = currentPlayer;
+    } else if (localCells.every(c => c !== null)) {
+      newMacroStatus[boardIndex] = 'draw';
+    }
+  }
+
+  const nextPlayer = currentPlayer === 'X' ? 'O' : 'X';
+  const nextActive = newMacroStatus[cellIndex] === null ? cellIndex : null;
+
+  return {
+    boards: newBoards,
+    macroStatus: newMacroStatus,
+    currentPlayer: nextPlayer,
+    activeBoard: nextActive
+  };
+}
+
+function getWinner(state) {
+  const { macroStatus } = state;
+  if (checkMacroWin(macroStatus, 'X')) return 'X';
+  if (checkMacroWin(macroStatus, 'O')) return 'O';
+  if (macroStatus.every(s => s !== null)) return 'draw';
+  const moves = getLegalMoves(state);
+  if (moves.length === 0) return 'draw';
+  return null;
+}
+
+function isTerminal(state) {
+  return getWinner(state) !== null;
+}
+
+function createInitialState() {
+  return {
+    boards: Array.from({ length: 9 }, () => Array(9).fill(null)),
+    macroStatus: Array(9).fill(null),
+    currentPlayer: 'X',
+    activeBoard: null
+  };
+}
+
+/* ----------------------------------------------------------------
+   Phase 1 console test harness — open DevTools to run these.
+   Call  runPhase1Tests()  in the console.
+   ---------------------------------------------------------------- */
+function runPhase1Tests() {
+  let passed = 0;
+  let failed = 0;
+
+  function assert(desc, condition) {
+    if (condition) {
+      console.log(`  ✓  ${desc}`);
+      passed++;
+    } else {
+      console.error(`  ✗  ${desc}`);
+      failed++;
+    }
+  }
+
+  console.group('Phase 1 — Game Engine Tests');
+
+  // --- checkLocalWin ---
+  console.group('checkLocalWin');
+  {
+    const cells = Array(9).fill(null);
+    cells[0] = cells[1] = cells[2] = 'X';
+    assert('row win X', checkLocalWin(cells, 'X'));
+    assert('row win X not O', !checkLocalWin(cells, 'O'));
+
+    const cells2 = Array(9).fill(null);
+    cells2[0] = cells2[3] = cells2[6] = 'O';
+    assert('col win O', checkLocalWin(cells2, 'O'));
+
+    const cells3 = Array(9).fill(null);
+    cells3[0] = cells3[4] = cells3[8] = 'X';
+    assert('diag win X', checkLocalWin(cells3, 'X'));
+
+    assert('no win empty', !checkLocalWin(Array(9).fill(null), 'X'));
+  }
+  console.groupEnd();
+
+  // --- checkMacroWin ---
+  console.group('checkMacroWin');
+  {
+    const ms = Array(9).fill(null);
+    ms[3] = ms[4] = ms[5] = 'O';
+    assert('macro row O', checkMacroWin(ms, 'O'));
+    assert('macro row O not X', !checkMacroWin(ms, 'X'));
+
+    const ms2 = Array(9).fill('draw');
+    assert('all draw no win', !checkMacroWin(ms2, 'X') && !checkMacroWin(ms2, 'O'));
+  }
+  console.groupEnd();
+
+  // --- createInitialState / getLegalMoves ---
+  console.group('getLegalMoves');
+  {
+    const s = createInitialState();
+    const moves = getLegalMoves(s);
+    assert('initial state has 81 moves', moves.length === 81);
+
+    // After first move at board 4, cell 4 → next must be in board 4
+    const s2 = applyMove(s, 4, 4);
+    const moves2 = getLegalMoves(s2);
+    assert('constrained to board 4 (8 remaining)', moves2.length === 8);
+    assert('all moves in board 4', moves2.every(m => m.board === 4));
+  }
+  console.groupEnd();
+
+  // --- applyMove ---
+  console.group('applyMove');
+  {
+    const s = createInitialState();
+    const s1 = applyMove(s, 0, 0);
+    assert('player switches to O', s1.currentPlayer === 'O');
+    assert('cell set to X', s1.boards[0][0] === 'X');
+    assert('original state unchanged', s.boards[0][0] === null);
+    assert('activeBoard = cell index (0)', s1.activeBoard === 0);
+
+    // Win a local board
+    let s2 = createInitialState();
+    // X wins board 0: cells 0,1,2
+    s2 = applyMove(s2, 0, 0); // X plays board0,cell0 → next in board0
+    s2 = applyMove(s2, 0, 3); // O plays board0,cell3 → next in board3
+    s2 = applyMove(s2, 3, 1); // X plays board3,cell1 → next in board1
+    s2 = applyMove(s2, 1, 1); // O plays board1,cell1 → next in board1
+    s2 = applyMove(s2, 1, 0); // X plays board1,cell0 → next in board0 (open)
+    s2 = applyMove(s2, 0, 4); // O plays board0,cell4 → next in board4
+    s2 = applyMove(s2, 4, 2); // X plays board4,cell2 → next in board2
+    s2 = applyMove(s2, 2, 2); // O plays board2,cell2 → next in board2
+    s2 = applyMove(s2, 2, 0); // X plays board2,cell0 → next in board0
+    // Now force X to win board 0: need cells 0(✓),1,2
+    s2 = applyMove(s2, 0, 6); // O plays board0,cell6 → next in board6
+    s2 = applyMove(s2, 6, 5); // X plays board6,cell5 → next in board5
+    s2 = applyMove(s2, 5, 1); // O plays board5,cell1 → next in board1
+    s2 = applyMove(s2, 1, 2); // X plays board1,cell2 → next in board2
+    s2 = applyMove(s2, 2, 5); // O plays board2,cell5 → next in board5
+    s2 = applyMove(s2, 5, 2); // X plays board5,cell2 → next in board2
+    // Let's just directly test macro win detection via a crafted state
+    const wState = createInitialState();
+    // Give X boards 0,1,2 on macroStatus (top row win)
+    const msCopy = wState.macroStatus.slice();
+    msCopy[0] = msCopy[1] = msCopy[2] = 'X';
+    const wState2 = { ...wState, macroStatus: msCopy };
+    assert('getWinner detects macro X win', getWinner(wState2) === 'X');
+  }
+  console.groupEnd();
+
+  // --- getWinner / isTerminal ---
+  console.group('getWinner / isTerminal');
+  {
+    const s = createInitialState();
+    assert('initial state no winner', getWinner(s) === null);
+    assert('initial state not terminal', !isTerminal(s));
+
+    // All macro-boards drawn → draw
+    const drawState = {
+      ...createInitialState(),
+      macroStatus: Array(9).fill('draw')
+    };
+    assert('all draws → draw', getWinner(drawState) === 'draw');
+    assert('all draws is terminal', isTerminal(drawState));
+
+    // O wins diagonal
+    const ms = Array(9).fill('draw');
+    ms[0] = ms[4] = ms[8] = 'O';
+    const oWin = { ...createInitialState(), macroStatus: ms };
+    assert('O diagonal win detected', getWinner(oWin) === 'O');
+  }
+  console.groupEnd();
+
+  // --- Free-choice rule (constrained board is closed) ---
+  console.group('Free-choice when target board closed');
+  {
+    const s = createInitialState();
+    // Mark board 5 as already won by X so sending play to board 5 gives free choice
+    const ms = s.macroStatus.slice();
+    ms[5] = 'X';
+    const s2 = { ...s, macroStatus: ms, activeBoard: null };
+    // Play in board 0, cell 5 → would send to board 5, but it's closed → free choice
+    const s3 = applyMove(s2, 0, 5);
+    assert('activeBoard null when target closed', s3.activeBoard === null);
+    const moves = getLegalMoves(s3);
+    const boards = [...new Set(moves.map(m => m.board))].sort((a, b) => a - b);
+    assert('free-choice moves cover all open boards', boards.length === 8); // board5 closed
+    assert('free-choice moves do not include closed board', !boards.includes(5));
+  }
+  console.groupEnd();
+
+  console.groupEnd(); // Phase 1
+  console.log(`\nResults: ${passed} passed, ${failed} failed`);
+  return { passed, failed };
+}
+
+// Expose globally for console access
+window.game = {
+  createInitialState,
+  getLegalMoves,
+  applyMove,
+  checkLocalWin,
+  checkMacroWin,
+  getWinner,
+  isTerminal
+};
+window.runPhase1Tests = runPhase1Tests;
+
+console.info('[UTTT] Game engine loaded. Run runPhase1Tests() to verify.');
+</script>
+
+<!-- ═══════════════════════════════════════════════════════════════
+     Placeholder UI (Phase 2+ will replace this)
+     ═══════════════════════════════════════════════════════════════ -->
+<div id="app">
+  <h1>Ultimate Tic-Tac-Toe</h1>
+  <p>Phase 1 complete — game engine loaded.</p>
+  <p>Open DevTools and run <code>runPhase1Tests()</code> to verify the engine.</p>
+</div>
+
+</body>
+</html>
