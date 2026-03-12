@@ -5,197 +5,225 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Ultimate Tic-Tac-Toe</title>
   <style>
-    /* Phase 2+ will fill this in */
-    body { font-family: sans-serif; background: #1a1a2e; color: #eee; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; }
-    #app { text-align: center; }
-    h1 { margin-bottom: 0.5rem; }
-    p { color: #aaa; }
+    /* ── Custom properties ─────────────────────────────────────── */
+    :root {
+      --bg:              #1a1a2e;
+      --surface:         #16213e;
+      --board-gap-color: #0d0d1a;
+      --macro-bg:        #16213e;
+      --macro-gap-color: #0a1628;
+      --macro-active-bg: #0d2a4a;
+      --macro-active-border: #4fc3f7;
+      --macro-won-x-bg:  rgba(239, 71, 111, 0.12);
+      --macro-won-o-bg:  rgba(6, 214, 160, 0.12);
+      --macro-draw-bg:   rgba(0, 0, 0, 0.35);
+      --cell-bg:         #1e2d45;
+      --cell-hover-bg:   #2a4060;
+      --x-color:         #ef476f;
+      --o-color:         #06d6a0;
+      --text:            #e8eaf0;
+      --muted:           #667;
+      --control-bg:      #1e2d45;
+      --control-border:  #2a4060;
+      --btn-bg:          #0f3460;
+      --btn-hover:       #1a4a80;
+    }
+
+    /* ── Reset & base ──────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      display: flex;
+      justify-content: center;
+      align-items: flex-start;
+      min-height: 100vh;
+      padding: 1.5rem 1rem;
+    }
+
+    /* ── App shell ─────────────────────────────────────────────── */
+    #app {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 1.1rem;
+      width: 100%;
+      max-width: 600px;
+    }
+
+    h1 {
+      font-size: 1.5rem;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--text);
+    }
+
+    /* ── Controls ──────────────────────────────────────────────── */
+    #controls {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.6rem;
+      align-items: center;
+      justify-content: center;
+      width: 100%;
+    }
+
+    #controls select,
+    #controls button {
+      background: var(--btn-bg);
+      color: var(--text);
+      border: 1px solid var(--control-border);
+      border-radius: 6px;
+      padding: 0.45rem 0.85rem;
+      font-size: 0.88rem;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    #controls select:hover,
+    #controls button:hover { background: var(--btn-hover); }
+
+    #controls button#new-game {
+      background: #0f3460;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+    }
+
+    .difficulty-wrap {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-size: 0.85rem;
+      color: #aab;
+    }
+    .difficulty-wrap input[type=range] {
+      width: 90px;
+      accent-color: var(--macro-active-border);
+    }
+    #iter-display {
+      min-width: 2.8rem;
+      text-align: right;
+      color: var(--text);
+    }
+
+    /* ── Status bar ────────────────────────────────────────────── */
+    #status {
+      font-size: 1.05rem;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      min-height: 1.6rem;
+    }
+    #status.turn-X  { color: var(--x-color); }
+    #status.turn-O  { color: var(--o-color); }
+    #status.win-X   { color: var(--x-color); }
+    #status.win-O   { color: var(--o-color); }
+    #status.draw    { color: var(--muted); }
+    #status.thinking { color: var(--macro-active-border); }
+
+    /* ── Main board ────────────────────────────────────────────── */
+    #board {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 7px;
+      background: var(--board-gap-color);
+      border: 7px solid var(--board-gap-color);
+      border-radius: 6px;
+      width: 100%;
+      max-width: 560px;
+    }
+
+    /* ── Macro-cell (one of the 9 sub-boards) ──────────────────── */
+    .macro-cell {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 3px;
+      background: var(--macro-gap-color);
+      border: 3px solid transparent;
+      border-radius: 3px;
+      padding: 4px;
+      position: relative;
+      transition: border-color 0.18s, background 0.18s;
+    }
+
+    .macro-cell.active {
+      border-color: var(--macro-active-border);
+      background: var(--macro-active-bg);
+    }
+
+    /* Decided macro-cells: no pointer events on their buttons */
+    .macro-cell.won-X .cell,
+    .macro-cell.won-O .cell,
+    .macro-cell.drawn .cell { pointer-events: none; }
+
+    /* ── Macro winner / draw overlay ───────────────────────────── */
+    .macro-overlay {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: clamp(2rem, 8vw, 3.5rem);
+      font-weight: 900;
+      border-radius: 2px;
+      z-index: 2;
+      pointer-events: none;
+    }
+    .macro-cell.won-X .macro-overlay {
+      color: var(--x-color);
+      background: var(--macro-won-x-bg);
+      text-shadow: 0 0 20px rgba(239,71,111,0.5);
+    }
+    .macro-cell.won-O .macro-overlay {
+      color: var(--o-color);
+      background: var(--macro-won-o-bg);
+      text-shadow: 0 0 20px rgba(6,214,160,0.4);
+    }
+    .macro-cell.drawn .macro-overlay {
+      color: var(--muted);
+      background: var(--macro-draw-bg);
+      font-size: clamp(1.5rem, 6vw, 2.5rem);
+    }
+
+    /* ── Individual cell buttons ───────────────────────────────── */
+    .cell {
+      aspect-ratio: 1;
+      background: var(--cell-bg);
+      border: none;
+      border-radius: 2px;
+      cursor: pointer;
+      font-size: clamp(0.75rem, 3vw, 1.1rem);
+      font-weight: 800;
+      color: var(--text);
+      transition: background 0.1s, color 0.1s;
+      /* Reserve space for content without layout shift */
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .cell:hover:not(:disabled) { background: var(--cell-hover-bg); }
+    .cell:disabled { cursor: default; }
+    .cell.taken-X { color: var(--x-color); }
+    .cell.taken-O { color: var(--o-color); }
+
+    /* ── Responsive: tighten up on smaller screens ─────────────── */
+    @media (max-width: 480px) {
+      body { padding: 0.75rem 0.5rem; }
+      #board { gap: 5px; border-width: 5px; }
+      .macro-cell { gap: 2px; padding: 3px; border-width: 2px; }
+    }
   </style>
 </head>
 <body>
 
 <!-- ═══════════════════════════════════════════════════════════════
-     WORKER SOURCE  (loaded by worker-bridge as a Blob URL)
+     WORKER SOURCE  (loaded by worker-bridge as a Blob URL in Phase 3)
      Contains: game.js + mcts.js
      ═══════════════════════════════════════════════════════════════ -->
 <script id="worker-src" type="text/plain">
 /* ----------------------------------------------------------------
-   game.js — Pure game logic (state, legal moves, win detection)
-   Shared by main thread and Web Worker.
-   ---------------------------------------------------------------- */
-
-const WIN_PATTERNS = [
-  [0,1,2],[3,4,5],[6,7,8], // rows
-  [0,3,6],[1,4,7],[2,5,8], // cols
-  [0,4,8],[2,4,6]          // diagonals
-];
-
-/**
- * Returns true if `player` has three in a row in `cells` (length-9 array).
- * @param {Array} cells
- * @param {string} player 'X' or 'O'
- * @returns {boolean}
- */
-function checkLocalWin(cells, player) {
-  return WIN_PATTERNS.some(([a, b, c]) =>
-    cells[a] === player && cells[b] === player && cells[c] === player
-  );
-}
-
-/**
- * Returns true if `player` has won the macro board.
- * @param {Array} macroStatus  length-9 array of 'X' | 'O' | 'draw' | null
- * @param {string} player
- * @returns {boolean}
- */
-function checkMacroWin(macroStatus, player) {
-  return WIN_PATTERNS.some(([a, b, c]) =>
-    macroStatus[a] === player && macroStatus[b] === player && macroStatus[c] === player
-  );
-}
-
-/**
- * Returns all legal {board, cell} moves for the given state.
- * @param {object} state
- * @returns {Array<{board: number, cell: number}>}
- */
-function getLegalMoves(state) {
-  const { boards, macroStatus, activeBoard } = state;
-  const moves = [];
-
-  const tryBoard = (b) => {
-    if (macroStatus[b] !== null) return; // board already decided
-    for (let c = 0; c < 9; c++) {
-      if (boards[b][c] === null) {
-        moves.push({ board: b, cell: c });
-      }
-    }
-  };
-
-  if (activeBoard !== null) {
-    // Constrained — must play in activeBoard (or free if it's closed)
-    if (macroStatus[activeBoard] === null) {
-      tryBoard(activeBoard);
-    }
-    // If the constrained board is closed, fall through to free choice
-    if (moves.length === 0) {
-      for (let b = 0; b < 9; b++) tryBoard(b);
-    }
-  } else {
-    // Free choice — any open board
-    for (let b = 0; b < 9; b++) tryBoard(b);
-  }
-
-  return moves;
-}
-
-/**
- * Applies a move and returns a new game state (copy-on-write; no mutation).
- * @param {object} state
- * @param {number} boardIndex
- * @param {number} cellIndex
- * @returns {object} new state
- */
-function applyMove(state, boardIndex, cellIndex) {
-  const { boards, macroStatus, currentPlayer } = state;
-
-  // Deep-copy the boards array
-  const newBoards = boards.map((b, i) =>
-    i === boardIndex ? b.slice() : b
-  );
-  newBoards[boardIndex][cellIndex] = currentPlayer;
-
-  // Update macro status for affected board
-  const newMacroStatus = macroStatus.slice();
-  if (newMacroStatus[boardIndex] === null) {
-    const localCells = newBoards[boardIndex];
-    if (checkLocalWin(localCells, currentPlayer)) {
-      newMacroStatus[boardIndex] = currentPlayer;
-    } else if (localCells.every(c => c !== null)) {
-      newMacroStatus[boardIndex] = 'draw';
-    }
-  }
-
-  // Next player
-  const nextPlayer = currentPlayer === 'X' ? 'O' : 'X';
-
-  // Determine next activeBoard:
-  // The cell index chosen becomes the index of the next required macro-board.
-  // If that macro-board is already decided, next player gets free choice (null).
-  const nextActive = newMacroStatus[cellIndex] === null ? cellIndex : null;
-
-  return {
-    boards: newBoards,
-    macroStatus: newMacroStatus,
-    currentPlayer: nextPlayer,
-    activeBoard: nextActive
-  };
-}
-
-/**
- * Returns the game winner or status.
- * @param {object} state
- * @returns {'X' | 'O' | 'draw' | null}  null means game still in progress
- */
-function getWinner(state) {
-  const { macroStatus } = state;
-
-  if (checkMacroWin(macroStatus, 'X')) return 'X';
-  if (checkMacroWin(macroStatus, 'O')) return 'O';
-
-  // Draw: all macro-boards decided (won or drawn) and no winner
-  if (macroStatus.every(s => s !== null)) return 'draw';
-
-  // Check if any moves remain
-  const moves = getLegalMoves(state);
-  if (moves.length === 0) return 'draw';
-
-  return null;
-}
-
-/**
- * Returns true if the game is over.
- * @param {object} state
- * @returns {boolean}
- */
-function isTerminal(state) {
-  return getWinner(state) !== null;
-}
-
-/**
- * Returns a fresh initial game state.
- * @returns {object}
- */
-function createInitialState() {
-  return {
-    boards: Array.from({ length: 9 }, () => Array(9).fill(null)),
-    macroStatus: Array(9).fill(null),
-    currentPlayer: 'X',
-    activeBoard: null
-  };
-}
-
-/* ----------------------------------------------------------------
-   mcts.js — Monte Carlo Tree Search Engine  (Phase 3)
-   ---------------------------------------------------------------- */
-
-// TODO: implement in Phase 3
-
-/* ----------------------------------------------------------------
-   Worker message handler  (Phase 3)
-   ---------------------------------------------------------------- */
-
-// TODO: implement in Phase 3
-
-</script>
-
-<!-- ═══════════════════════════════════════════════════════════════
-     MAIN THREAD SCRIPTS
-     ═══════════════════════════════════════════════════════════════ -->
-<script>
-/* ----------------------------------------------------------------
-   Inline game.js on the main thread so render/controller can use it
-   without a worker round-trip for UI logic.
+   game.js — Pure game logic (shared by main thread and Web Worker)
    ---------------------------------------------------------------- */
 
 const WIN_PATTERNS = [
@@ -219,36 +247,25 @@ function checkMacroWin(macroStatus, player) {
 function getLegalMoves(state) {
   const { boards, macroStatus, activeBoard } = state;
   const moves = [];
-
   const tryBoard = (b) => {
     if (macroStatus[b] !== null) return;
     for (let c = 0; c < 9; c++) {
       if (boards[b][c] === null) moves.push({ board: b, cell: c });
     }
   };
-
   if (activeBoard !== null) {
-    if (macroStatus[activeBoard] === null) {
-      tryBoard(activeBoard);
-    }
-    if (moves.length === 0) {
-      for (let b = 0; b < 9; b++) tryBoard(b);
-    }
+    if (macroStatus[activeBoard] === null) tryBoard(activeBoard);
+    if (moves.length === 0) for (let b = 0; b < 9; b++) tryBoard(b);
   } else {
     for (let b = 0; b < 9; b++) tryBoard(b);
   }
-
   return moves;
 }
 
 function applyMove(state, boardIndex, cellIndex) {
   const { boards, macroStatus, currentPlayer } = state;
-
-  const newBoards = boards.map((b, i) =>
-    i === boardIndex ? b.slice() : b
-  );
+  const newBoards = boards.map((b, i) => i === boardIndex ? b.slice() : b);
   newBoards[boardIndex][cellIndex] = currentPlayer;
-
   const newMacroStatus = macroStatus.slice();
   if (newMacroStatus[boardIndex] === null) {
     const localCells = newBoards[boardIndex];
@@ -258,16 +275,9 @@ function applyMove(state, boardIndex, cellIndex) {
       newMacroStatus[boardIndex] = 'draw';
     }
   }
-
   const nextPlayer = currentPlayer === 'X' ? 'O' : 'X';
   const nextActive = newMacroStatus[cellIndex] === null ? cellIndex : null;
-
-  return {
-    boards: newBoards,
-    macroStatus: newMacroStatus,
-    currentPlayer: nextPlayer,
-    activeBoard: nextActive
-  };
+  return { boards: newBoards, macroStatus: newMacroStatus, currentPlayer: nextPlayer, activeBoard: nextActive };
 }
 
 function getWinner(state) {
@@ -275,14 +285,11 @@ function getWinner(state) {
   if (checkMacroWin(macroStatus, 'X')) return 'X';
   if (checkMacroWin(macroStatus, 'O')) return 'O';
   if (macroStatus.every(s => s !== null)) return 'draw';
-  const moves = getLegalMoves(state);
-  if (moves.length === 0) return 'draw';
+  if (getLegalMoves(state).length === 0) return 'draw';
   return null;
 }
 
-function isTerminal(state) {
-  return getWinner(state) !== null;
-}
+function isTerminal(state) { return getWinner(state) !== null; }
 
 function createInitialState() {
   return {
@@ -294,181 +301,351 @@ function createInitialState() {
 }
 
 /* ----------------------------------------------------------------
-   Phase 1 console test harness — open DevTools to run these.
-   Call  runPhase1Tests()  in the console.
+   mcts.js — Monte Carlo Tree Search Engine  (Phase 3)
    ---------------------------------------------------------------- */
-function runPhase1Tests() {
-  let passed = 0;
-  let failed = 0;
+// TODO: implement in Phase 3
 
-  function assert(desc, condition) {
-    if (condition) {
-      console.log(`  ✓  ${desc}`);
-      passed++;
-    } else {
-      console.error(`  ✗  ${desc}`);
-      failed++;
+/* ----------------------------------------------------------------
+   Worker message handler  (Phase 3)
+   ---------------------------------------------------------------- */
+// TODO: implement in Phase 3
+</script>
+
+<!-- ═══════════════════════════════════════════════════════════════
+     HTML STRUCTURE
+     ═══════════════════════════════════════════════════════════════ -->
+<div id="app">
+  <h1>Ultimate Tic-Tac-Toe</h1>
+
+  <div id="controls">
+    <select id="mode-select" aria-label="Game mode">
+      <option value="hvh">Human vs Human</option>
+      <option value="hva-x">Human (X) vs AI</option>
+      <option value="hva-o">Human (O) vs AI</option>
+    </select>
+
+    <div class="difficulty-wrap" id="difficulty-group" aria-label="AI difficulty">
+      <span>AI:</span>
+      <input type="range" id="difficulty" min="500" max="10000" step="500" value="2000"
+             aria-label="AI iterations" />
+      <span id="iter-display">2000</span>
+    </div>
+
+    <button id="new-game">New Game</button>
+  </div>
+
+  <div id="status" role="status" aria-live="polite"></div>
+  <div id="board" role="grid" aria-label="Ultimate Tic-Tac-Toe board"></div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════
+     MAIN THREAD SCRIPTS
+     ═══════════════════════════════════════════════════════════════ -->
+<script>
+/* ----------------------------------------------------------------
+   game.js (main-thread copy — identical to worker-src version)
+   ---------------------------------------------------------------- */
+const WIN_PATTERNS = [
+  [0,1,2],[3,4,5],[6,7,8],
+  [0,3,6],[1,4,7],[2,5,8],
+  [0,4,8],[2,4,6]
+];
+
+function checkLocalWin(cells, player) {
+  return WIN_PATTERNS.some(([a, b, c]) =>
+    cells[a] === player && cells[b] === player && cells[c] === player
+  );
+}
+
+function checkMacroWin(macroStatus, player) {
+  return WIN_PATTERNS.some(([a, b, c]) =>
+    macroStatus[a] === player && macroStatus[b] === player && macroStatus[c] === player
+  );
+}
+
+function getLegalMoves(state) {
+  const { boards, macroStatus, activeBoard } = state;
+  const moves = [];
+  const tryBoard = (b) => {
+    if (macroStatus[b] !== null) return;
+    for (let c = 0; c < 9; c++) {
+      if (boards[b][c] === null) moves.push({ board: b, cell: c });
+    }
+  };
+  if (activeBoard !== null) {
+    if (macroStatus[activeBoard] === null) tryBoard(activeBoard);
+    if (moves.length === 0) for (let b = 0; b < 9; b++) tryBoard(b);
+  } else {
+    for (let b = 0; b < 9; b++) tryBoard(b);
+  }
+  return moves;
+}
+
+function applyMove(state, boardIndex, cellIndex) {
+  const { boards, macroStatus, currentPlayer } = state;
+  const newBoards = boards.map((b, i) => i === boardIndex ? b.slice() : b);
+  newBoards[boardIndex][cellIndex] = currentPlayer;
+  const newMacroStatus = macroStatus.slice();
+  if (newMacroStatus[boardIndex] === null) {
+    const localCells = newBoards[boardIndex];
+    if (checkLocalWin(localCells, currentPlayer)) {
+      newMacroStatus[boardIndex] = currentPlayer;
+    } else if (localCells.every(c => c !== null)) {
+      newMacroStatus[boardIndex] = 'draw';
+    }
+  }
+  const nextPlayer = currentPlayer === 'X' ? 'O' : 'X';
+  const nextActive = newMacroStatus[cellIndex] === null ? cellIndex : null;
+  return { boards: newBoards, macroStatus: newMacroStatus, currentPlayer: nextPlayer, activeBoard: nextActive };
+}
+
+function getWinner(state) {
+  const { macroStatus } = state;
+  if (checkMacroWin(macroStatus, 'X')) return 'X';
+  if (checkMacroWin(macroStatus, 'O')) return 'O';
+  if (macroStatus.every(s => s !== null)) return 'draw';
+  if (getLegalMoves(state).length === 0) return 'draw';
+  return null;
+}
+
+function isTerminal(state) { return getWinner(state) !== null; }
+
+function createInitialState() {
+  return {
+    boards: Array.from({ length: 9 }, () => Array(9).fill(null)),
+    macroStatus: Array(9).fill(null),
+    currentPlayer: 'X',
+    activeBoard: null
+  };
+}
+
+/* ----------------------------------------------------------------
+   render.js — DOM construction and updates
+   ---------------------------------------------------------------- */
+
+/** Build the 81-button board DOM (called once on init). */
+function buildBoard() {
+  const boardEl = document.getElementById('board');
+  boardEl.innerHTML = '';
+
+  for (let b = 0; b < 9; b++) {
+    const macroCell = document.createElement('div');
+    macroCell.className = 'macro-cell';
+    macroCell.dataset.board = b;
+    macroCell.setAttribute('role', 'group');
+    macroCell.setAttribute('aria-label', `Board ${b + 1}`);
+
+    for (let c = 0; c < 9; c++) {
+      const btn = document.createElement('button');
+      btn.className = 'cell';
+      btn.dataset.board = b;
+      btn.dataset.cell = c;
+      btn.setAttribute('aria-label', `Board ${b + 1}, cell ${c + 1}`);
+      btn.addEventListener('click', () => onCellClick(b, c));
+      macroCell.appendChild(btn);
+    }
+
+    boardEl.appendChild(macroCell);
+  }
+}
+
+/**
+ * Sync the entire DOM to the given state.
+ * Cheap enough to run on every move (81 buttons, trivial diff).
+ */
+function render(state) {
+  const { boards, macroStatus } = state;
+  const winner = getWinner(state);
+  const legalMoves = winner ? [] : getLegalMoves(state);
+  const activeBoards = new Set(legalMoves.map(m => m.board));
+
+  for (let b = 0; b < 9; b++) {
+    const macroEl = document.querySelector(`.macro-cell[data-board="${b}"]`);
+    const status = macroStatus[b];
+
+    // Active highlight
+    macroEl.classList.toggle('active', activeBoards.has(b));
+
+    // Won / drawn classes + overlay
+    macroEl.classList.remove('won-X', 'won-O', 'drawn');
+    const existing = macroEl.querySelector('.macro-overlay');
+    if (existing) existing.remove();
+
+    if (status !== null) {
+      if (status === 'X') macroEl.classList.add('won-X');
+      else if (status === 'O') macroEl.classList.add('won-O');
+      else macroEl.classList.add('drawn');
+
+      const overlay = document.createElement('div');
+      overlay.className = 'macro-overlay';
+      overlay.setAttribute('aria-hidden', 'true');
+      overlay.textContent = status === 'draw' ? '—' : status;
+      macroEl.appendChild(overlay);
+    }
+
+    // Individual cells
+    for (let c = 0; c < 9; c++) {
+      const btn = macroEl.querySelector(`[data-cell="${c}"]`);
+      const val = boards[b][c];
+
+      btn.textContent = val ?? '';
+      btn.classList.remove('taken-X', 'taken-O');
+      if (val === 'X') btn.classList.add('taken-X');
+      else if (val === 'O') btn.classList.add('taken-O');
+
+      // Disable if: cell taken, board decided, not in legal set, or game over
+      btn.disabled = val !== null || status !== null || !activeBoards.has(b) || winner !== null;
+
+      // Update aria label with current value
+      const row = Math.floor(c / 3) + 1;
+      const col = (c % 3) + 1;
+      btn.setAttribute('aria-label',
+        `Board ${b + 1}, row ${row}, column ${col}${val ? ': ' + val : ''}`);
     }
   }
 
+  updateStatus(state, winner);
+}
+
+function updateStatus(state, winner) {
+  const el = document.getElementById('status');
+  if (winner === 'X') {
+    el.textContent = 'X wins!';
+    el.className = 'win-X';
+  } else if (winner === 'O') {
+    el.textContent = 'O wins!';
+    el.className = 'win-O';
+  } else if (winner === 'draw') {
+    el.textContent = "It's a draw!";
+    el.className = 'draw';
+  } else {
+    el.textContent = `${state.currentPlayer}'s turn`;
+    el.className = `turn-${state.currentPlayer}`;
+  }
+}
+
+/* ----------------------------------------------------------------
+   controller.js — Game flow and click handling
+   ---------------------------------------------------------------- */
+
+let gameState = null;
+
+function init() {
+  gameState = createInitialState();
+  buildBoard();
+  render(gameState);
+}
+
+function onCellClick(boardIndex, cellIndex) {
+  if (!gameState || getWinner(gameState)) return;
+
+  const legal = getLegalMoves(gameState);
+  if (!legal.some(m => m.board === boardIndex && m.cell === cellIndex)) return;
+
+  gameState = applyMove(gameState, boardIndex, cellIndex);
+  render(gameState);
+}
+
+/* ----------------------------------------------------------------
+   Controls wiring
+   ---------------------------------------------------------------- */
+document.getElementById('new-game').addEventListener('click', init);
+
+const difficultySlider = document.getElementById('difficulty');
+const iterDisplay = document.getElementById('iter-display');
+difficultySlider.addEventListener('input', () => {
+  iterDisplay.textContent = difficultySlider.value;
+});
+
+// Grey out difficulty controls when in Human vs Human mode
+const modeSelect = document.getElementById('mode-select');
+function syncDifficultyVisibility() {
+  const isHvH = modeSelect.value === 'hvh';
+  document.getElementById('difficulty-group').style.opacity = isHvH ? '0.35' : '1';
+  document.getElementById('difficulty-group').style.pointerEvents = isHvH ? 'none' : '';
+}
+modeSelect.addEventListener('change', syncDifficultyVisibility);
+
+/* ----------------------------------------------------------------
+   worker-bridge.js stub  (Phase 3)
+   ---------------------------------------------------------------- */
+// TODO: implement in Phase 3
+
+/* ----------------------------------------------------------------
+   Phase 1 console test harness
+   ---------------------------------------------------------------- */
+function runPhase1Tests() {
+  let passed = 0, failed = 0;
+  const assert = (desc, ok) => {
+    if (ok) { console.log(`  ✓  ${desc}`); passed++; }
+    else     { console.error(`  ✗  ${desc}`); failed++; }
+  };
   console.group('Phase 1 — Game Engine Tests');
 
-  // --- checkLocalWin ---
   console.group('checkLocalWin');
-  {
-    const cells = Array(9).fill(null);
-    cells[0] = cells[1] = cells[2] = 'X';
-    assert('row win X', checkLocalWin(cells, 'X'));
-    assert('row win X not O', !checkLocalWin(cells, 'O'));
-
-    const cells2 = Array(9).fill(null);
-    cells2[0] = cells2[3] = cells2[6] = 'O';
-    assert('col win O', checkLocalWin(cells2, 'O'));
-
-    const cells3 = Array(9).fill(null);
-    cells3[0] = cells3[4] = cells3[8] = 'X';
-    assert('diag win X', checkLocalWin(cells3, 'X'));
-
-    assert('no win empty', !checkLocalWin(Array(9).fill(null), 'X'));
-  }
+  const c1 = Array(9).fill(null); c1[0]=c1[1]=c1[2]='X';
+  assert('row win X', checkLocalWin(c1,'X'));
+  assert('row win not O', !checkLocalWin(c1,'O'));
+  const c2=Array(9).fill(null); c2[0]=c2[3]=c2[6]='O';
+  assert('col win O', checkLocalWin(c2,'O'));
+  const c3=Array(9).fill(null); c3[0]=c3[4]=c3[8]='X';
+  assert('diag win X', checkLocalWin(c3,'X'));
+  assert('empty no win', !checkLocalWin(Array(9).fill(null),'X'));
   console.groupEnd();
 
-  // --- checkMacroWin ---
   console.group('checkMacroWin');
-  {
-    const ms = Array(9).fill(null);
-    ms[3] = ms[4] = ms[5] = 'O';
-    assert('macro row O', checkMacroWin(ms, 'O'));
-    assert('macro row O not X', !checkMacroWin(ms, 'X'));
-
-    const ms2 = Array(9).fill('draw');
-    assert('all draw no win', !checkMacroWin(ms2, 'X') && !checkMacroWin(ms2, 'O'));
-  }
+  const ms=Array(9).fill(null); ms[3]=ms[4]=ms[5]='O';
+  assert('macro row O', checkMacroWin(ms,'O'));
+  assert('macro not X', !checkMacroWin(ms,'X'));
+  assert('all draw no win', !checkMacroWin(Array(9).fill('draw'),'X'));
   console.groupEnd();
 
-  // --- createInitialState / getLegalMoves ---
   console.group('getLegalMoves');
-  {
-    const s = createInitialState();
-    const moves = getLegalMoves(s);
-    assert('initial state has 81 moves', moves.length === 81);
-
-    // After first move at board 4, cell 4 → next must be in board 4
-    const s2 = applyMove(s, 4, 4);
-    const moves2 = getLegalMoves(s2);
-    assert('constrained to board 4 (8 remaining)', moves2.length === 8);
-    assert('all moves in board 4', moves2.every(m => m.board === 4));
-  }
+  const s0=createInitialState();
+  assert('81 moves initially', getLegalMoves(s0).length===81);
+  const s1=applyMove(s0,4,4);
+  const m1=getLegalMoves(s1);
+  assert('constrained to board 4', m1.length===8 && m1.every(m=>m.board===4));
   console.groupEnd();
 
-  // --- applyMove ---
   console.group('applyMove');
-  {
-    const s = createInitialState();
-    const s1 = applyMove(s, 0, 0);
-    assert('player switches to O', s1.currentPlayer === 'O');
-    assert('cell set to X', s1.boards[0][0] === 'X');
-    assert('original state unchanged', s.boards[0][0] === null);
-    assert('activeBoard = cell index (0)', s1.activeBoard === 0);
-
-    // Win a local board
-    let s2 = createInitialState();
-    // X wins board 0: cells 0,1,2
-    s2 = applyMove(s2, 0, 0); // X plays board0,cell0 → next in board0
-    s2 = applyMove(s2, 0, 3); // O plays board0,cell3 → next in board3
-    s2 = applyMove(s2, 3, 1); // X plays board3,cell1 → next in board1
-    s2 = applyMove(s2, 1, 1); // O plays board1,cell1 → next in board1
-    s2 = applyMove(s2, 1, 0); // X plays board1,cell0 → next in board0 (open)
-    s2 = applyMove(s2, 0, 4); // O plays board0,cell4 → next in board4
-    s2 = applyMove(s2, 4, 2); // X plays board4,cell2 → next in board2
-    s2 = applyMove(s2, 2, 2); // O plays board2,cell2 → next in board2
-    s2 = applyMove(s2, 2, 0); // X plays board2,cell0 → next in board0
-    // Now force X to win board 0: need cells 0(✓),1,2
-    s2 = applyMove(s2, 0, 6); // O plays board0,cell6 → next in board6
-    s2 = applyMove(s2, 6, 5); // X plays board6,cell5 → next in board5
-    s2 = applyMove(s2, 5, 1); // O plays board5,cell1 → next in board1
-    s2 = applyMove(s2, 1, 2); // X plays board1,cell2 → next in board2
-    s2 = applyMove(s2, 2, 5); // O plays board2,cell5 → next in board5
-    s2 = applyMove(s2, 5, 2); // X plays board5,cell2 → next in board2
-    // Let's just directly test macro win detection via a crafted state
-    const wState = createInitialState();
-    // Give X boards 0,1,2 on macroStatus (top row win)
-    const msCopy = wState.macroStatus.slice();
-    msCopy[0] = msCopy[1] = msCopy[2] = 'X';
-    const wState2 = { ...wState, macroStatus: msCopy };
-    assert('getWinner detects macro X win', getWinner(wState2) === 'X');
-  }
+  const sa=createInitialState(), sb=applyMove(sa,0,0);
+  assert('player switches', sb.currentPlayer==='O');
+  assert('cell set', sb.boards[0][0]==='X');
+  assert('immutable', sa.boards[0][0]===null);
+  assert('activeBoard set', sb.activeBoard===0);
   console.groupEnd();
 
-  // --- getWinner / isTerminal ---
   console.group('getWinner / isTerminal');
-  {
-    const s = createInitialState();
-    assert('initial state no winner', getWinner(s) === null);
-    assert('initial state not terminal', !isTerminal(s));
-
-    // All macro-boards drawn → draw
-    const drawState = {
-      ...createInitialState(),
-      macroStatus: Array(9).fill('draw')
-    };
-    assert('all draws → draw', getWinner(drawState) === 'draw');
-    assert('all draws is terminal', isTerminal(drawState));
-
-    // O wins diagonal
-    const ms = Array(9).fill('draw');
-    ms[0] = ms[4] = ms[8] = 'O';
-    const oWin = { ...createInitialState(), macroStatus: ms };
-    assert('O diagonal win detected', getWinner(oWin) === 'O');
-  }
+  assert('initial null', getWinner(createInitialState())===null);
+  assert('all draw → draw', getWinner({...createInitialState(),macroStatus:Array(9).fill('draw')})==='draw');
+  const msO=Array(9).fill('draw'); msO[0]=msO[4]=msO[8]='O';
+  assert('O diag win', getWinner({...createInitialState(),macroStatus:msO})==='O');
   console.groupEnd();
 
-  // --- Free-choice rule (constrained board is closed) ---
-  console.group('Free-choice when target board closed');
-  {
-    const s = createInitialState();
-    // Mark board 5 as already won by X so sending play to board 5 gives free choice
-    const ms = s.macroStatus.slice();
-    ms[5] = 'X';
-    const s2 = { ...s, macroStatus: ms, activeBoard: null };
-    // Play in board 0, cell 5 → would send to board 5, but it's closed → free choice
-    const s3 = applyMove(s2, 0, 5);
-    assert('activeBoard null when target closed', s3.activeBoard === null);
-    const moves = getLegalMoves(s3);
-    const boards = [...new Set(moves.map(m => m.board))].sort((a, b) => a - b);
-    assert('free-choice moves cover all open boards', boards.length === 8); // board5 closed
-    assert('free-choice moves do not include closed board', !boards.includes(5));
-  }
+  console.group('Free-choice when target closed');
+  const sf=createInitialState();
+  const msf=sf.macroStatus.slice(); msf[5]='X';
+  const sf2={...sf,macroStatus:msf};
+  const sf3=applyMove(sf2,0,5);
+  assert('activeBoard null', sf3.activeBoard===null);
+  const bf=[...new Set(getLegalMoves(sf3).map(m=>m.board))];
+  assert('8 open boards', bf.length===8);
+  assert('closed board excluded', !bf.includes(5));
   console.groupEnd();
 
-  console.groupEnd(); // Phase 1
+  console.groupEnd();
   console.log(`\nResults: ${passed} passed, ${failed} failed`);
   return { passed, failed };
 }
 
-// Expose globally for console access
-window.game = {
-  createInitialState,
-  getLegalMoves,
-  applyMove,
-  checkLocalWin,
-  checkMacroWin,
-  getWinner,
-  isTerminal
-};
+window.game = { createInitialState, getLegalMoves, applyMove, checkLocalWin, checkMacroWin, getWinner, isTerminal };
 window.runPhase1Tests = runPhase1Tests;
 
-console.info('[UTTT] Game engine loaded. Run runPhase1Tests() to verify.');
+/* ── Bootstrap ─────────────────────────────────────────────────── */
+syncDifficultyVisibility();
+init();
 </script>
-
-<!-- ═══════════════════════════════════════════════════════════════
-     Placeholder UI (Phase 2+ will replace this)
-     ═══════════════════════════════════════════════════════════════ -->
-<div id="app">
-  <h1>Ultimate Tic-Tac-Toe</h1>
-  <p>Phase 1 complete — game engine loaded.</p>
-  <p>Open DevTools and run <code>runPhase1Tests()</code> to verify the engine.</p>
-</div>
 
 </body>
 </html>
